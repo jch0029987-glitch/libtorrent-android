@@ -8,40 +8,34 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-
     strategy:
       matrix:
         abi: [arm64-v8a, armeabi-v7a, x86_64]
 
     steps:
-      # 1️⃣ Checkout repo + submodules
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           submodules: recursive
+          fetch-depth: 0
 
-      # 2️⃣ Setup Android SDK + preinstalled NDK
+      # 2️⃣ FORCE initialize nested submodules (This fixes the missing Boost error)
+      - name: Initialize nested submodules
+        run: |
+          git submodule sync --recursive
+          git submodule update --init --recursive --force
+
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
         with:
-          ndk-version: 27.3.13750724  # preinstalled on runner
+          ndk-version: 27.3.13750724
 
-      # 3️⃣ Verify NDK
-      - name: Verify NDK install
-        run: |
-          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
-          ls $ANDROID_SDK_ROOT/ndk
-          ls $ANDROID_SDK_ROOT/ndk/27.3.13750724/build/cmake
-
-      # 4️⃣ Install Ninja build system
       - name: Install Ninja
         run: sudo apt-get update && sudo apt-get install -y ninja-build
 
-      # 5️⃣ Build libtorrent for each ABI
       - name: Build libtorrent for ${{ matrix.abi }}
         run: |
           export ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/27.3.13750724
-
           mkdir -p build/${{ matrix.abi }}
           cd build/${{ matrix.abi }}
 
@@ -51,17 +45,15 @@ jobs:
             -DANDROID_ABI=${{ matrix.abi }} \
             -DANDROID_PLATFORM=android-26 \
             -DBUILD_SHARED_LIBS=ON \
+            -DCMAKE_BUILD_TYPE=Release \
             -DTORRENT_BUILD_TESTS=OFF \
             -DTORRENT_BUILD_EXAMPLES=OFF \
             -DTORRENT_BUILD_TOOLS=OFF
 
-          cmake --build . --parallel
+          cmake --build . --parallel $(nproc)
 
-      # 6️⃣ Upload the resulting .so files
       - name: Upload libtorrent.so
         uses: actions/upload-artifact@v4
         with:
           name: libtorrent-${{ matrix.abi }}
-          path: |
-            build/${{ matrix.abi }}/libtorrent.so
-            build/${{ matrix.abi }}/libtorrent*.so
+          path: build/${{ matrix.abi }}/output/${{ matrix.abi }}/libtorrent.so
