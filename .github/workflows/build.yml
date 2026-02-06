@@ -1,0 +1,41 @@
+name: Build libtorrent Android .so
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        abi: [arm64-v8a, armeabi-v7a, x86_64]
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup Android NDK
+        uses: android-actions/setup-android@v3
+
+      - name: Configure & build
+        run: |
+          export ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/26.1.10909125
+          mkdir -p build/${{ matrix.abi }}
+          cd build/${{ matrix.abi }}
+
+          cmake ../.. \
+            -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake \
+            -DANDROID_ABI=${{ matrix.abi }} \
+            -DANDROID_PLATFORM=android-26 \
+            -DBUILD_SHARED_LIBS=ON
+
+          cmake --build . --parallel
+
+      - name: Upload .so
+        uses: actions/upload-artifact@v4
+        with:
+          name: libtorrent-${{ matrix.abi }}
+          path: build/${{ matrix.abi }}/libtorrent.so
