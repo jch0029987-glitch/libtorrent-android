@@ -14,7 +14,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 set(BUILD_SHARED_LIBS ON)
 
-# Suppress warnings from submodules
+# Suppress warnings from submodules to keep build logs clean
 set(CMAKE_SUPPRESS_DEVELOPER_WARNINGS ON CACHE BOOL "" FORCE)
 
 # ------------------------------------------------------------------------------
@@ -28,47 +28,51 @@ add_compile_options(
     -fdata-sections
 )
 
-# Linker-level dead code elimination
 if(NOT MSVC)
     set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,--gc-sections")
 endif()
 
 # ------------------------------------------------------------------------------
-# Libtorrent Configuration (Pre-Subdirectory)
+# Libtorrent Configuration
 # ------------------------------------------------------------------------------
 set(TORRENT_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(TORRENT_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(TORRENT_BUILD_TOOLS OFF CACHE BOOL "" FORCE)
 set(TORRENT_BUILD_SIMULATOR OFF CACHE BOOL "" FORCE)
 
-# For a lean Android build, we disable SSL by default. 
-# If you need HTTPS trackers, set these to ON and provide OpenSSL for Android.
+# For Android, we disable SSL to avoid external OpenSSL dependencies.
 set(TORRENT_USE_OPENSSL OFF CACHE BOOL "" FORCE)
 set(TORRENT_USE_LIBCRYPTO OFF CACHE BOOL "" FORCE)
 set(TORRENT_USE_BOOST ON CACHE BOOL "" FORCE)
 
 # ------------------------------------------------------------------------------
-# Boost Submodule Detection (Fixes FindBoost Errors)
+# Smart Boost Detection (The "Hunter" Logic)
 # ------------------------------------------------------------------------------
-set(BOOST_ROOT "${CMAKE_SOURCE_DIR}/third_party/libtorrent/deps/boost")
+# We search recursively for version.hpp inside the expected deps folder
+file(GLOB_RECURSE BOOST_VERSION_PATH 
+    "${CMAKE_SOURCE_DIR}/third_party/libtorrent/deps/boost/*/version.hpp"
+    "${CMAKE_SOURCE_DIR}/third_party/libtorrent/deps/boost/version.hpp"
+)
 
-# Libtorrent's internal FindBoost needs to see version.hpp.
-# It usually lives in /boost/version.hpp OR /include/boost/version.hpp.
-if (EXISTS "${BOOST_ROOT}/boost/version.hpp")
-    set(BOOST_FINAL_INC "${BOOST_ROOT}")
-elseif (EXISTS "${BOOST_ROOT}/include/boost/version.hpp")
-    set(BOOST_FINAL_INC "${BOOST_ROOT}/include")
+if (BOOST_VERSION_PATH)
+    # Get the first match found
+    list(GET BOOST_VERSION_PATH 0 _MATCH)
+    # version.hpp is in .../boost/version.hpp. 
+    # We need the parent of the folder containing 'version.hpp'
+    get_filename_component(_BOOST_DIR "${_MATCH}" DIRECTORY)
+    get_filename_component(BOOST_FINAL_INC "${_BOOST_DIR}" DIRECTORY)
+    
+    message(STATUS "Boost Detection: Found version.hpp at ${_MATCH}")
+    message(STATUS "Boost Detection: Setting Include Dir to ${BOOST_FINAL_INC}")
 else()
-    message(FATAL_ERROR "Boost headers not found at ${BOOST_ROOT}. Ensure submodules are initialized.")
+    message(FATAL_ERROR "Boost headers not found! Ensure submodules are checked out in third_party/libtorrent/deps/boost")
 endif()
 
-# Force CMake to use our bundled Boost headers exclusively
+# Force the standard FindBoost module to use our discovered path
 set(Boost_INCLUDE_DIR "${BOOST_FINAL_INC}" CACHE PATH "" FORCE)
 set(BOOST_INCLUDEDIR "${BOOST_FINAL_INC}" CACHE PATH "" FORCE)
 set(Boost_NO_SYSTEM_PATHS ON CACHE BOOL "" FORCE)
 set(Boost_NO_BOOST_CMAKE ON CACHE BOOL "" FORCE)
-
-message(STATUS "Using Boost headers from: ${BOOST_FINAL_INC}")
 
 # ------------------------------------------------------------------------------
 # Add Libtorrent Source
@@ -78,26 +82,26 @@ add_subdirectory(third_party/libtorrent)
 # ------------------------------------------------------------------------------
 # Target Properties & Android Output
 # ------------------------------------------------------------------------------
-# libtorrent 2.0 uses 'torrent-rasterbar' as the target name
 if (TARGET torrent-rasterbar)
     set_target_properties(torrent-rasterbar PROPERTIES
         OUTPUT_NAME "torrent"
+        # This places the .so in a clean folder structure for the workflow to find
         LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/output/${ANDROID_ABI}"
     )
 
-    # Link the Android logging library so libtorrent can output to logcat
+    # Allow libtorrent to log to Android Logcat
     target_link_libraries(torrent-rasterbar PRIVATE log)
 endif()
 
 # ------------------------------------------------------------------------------
-# Post-Build: Strip Symbols for Release
+# Post-Build: Strip Symbols
 # ------------------------------------------------------------------------------
 if (CMAKE_BUILD_TYPE STREQUAL "Release")
     add_custom_command(
         TARGET torrent-rasterbar POST_BUILD
         COMMAND ${CMAKE_STRIP} --strip-unneeded $<TARGET_FILE:torrent-rasterbar>
-        COMMENT "Stripping debug symbols from libtorrent.so"
+        COMMENT "Stripping debug symbols..."
     )
 endif()
 
-message(STATUS "libtorrent-android configured for ABI: ${ANDROID_ABI}")
+message(STATUS "Configuration complete for ABI: ${ANDROID_ABI}")

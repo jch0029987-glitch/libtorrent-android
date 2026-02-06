@@ -16,16 +16,18 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 1️⃣ Manually clone libtorrent and sub-dependencies
       - name: Force Clone Libtorrent & Boost
         run: |
+          # Clean up any failed attempts
           rm -rf third_party/libtorrent
           mkdir -p third_party
-          git clone --recursive https://github.com/arvidn/libtorrent.git third_party/libtorrent
+          # Clone libtorrent 2.0 stable branch
+          git clone --branch RC_2_0 --single-branch https://github.com/arvidn/libtorrent.git third_party/libtorrent
           cd third_party/libtorrent
-          # Ensure we are on a stable branch (e.g., RC_2_0 for C++17)
-          git checkout RC_2_0
+          # This is the critical part: fetch the boost headers
           git submodule update --init --recursive
+          # Debug: Show exactly where version.hpp is
+          find . -name version.hpp
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
@@ -35,7 +37,6 @@ jobs:
       - name: Install Ninja
         run: sudo apt-get update && sudo apt-get install -y ninja-build
 
-      # 2️⃣ Build with explicit environment paths
       - name: Build libtorrent for ${{ matrix.abi }}
         run: |
           export ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/27.3.13750724
@@ -51,12 +52,10 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release \
             -DTORRENT_BUILD_TESTS=OFF \
             -DTORRENT_BUILD_EXAMPLES=OFF \
-            -DTORRENT_BUILD_TOOLS=OFF \
-            -DTORRENT_USE_OPENSSL=OFF
+            -DTORRENT_BUILD_TOOLS=OFF
 
           cmake --build . --parallel $(nproc)
 
-      # 3️⃣ Upload the resulting .so files
       - name: Upload libtorrent.so
         uses: actions/upload-artifact@v4
         with:
