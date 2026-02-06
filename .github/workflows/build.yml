@@ -14,33 +14,33 @@ jobs:
         abi: [arm64-v8a, armeabi-v7a, x86_64]
 
     steps:
-      # Checkout repo + submodules
+      # 1️⃣ Checkout repo + submodules
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           submodules: recursive
 
-      # Install Android SDK + NDK
+      # 2️⃣ Install Android SDK + NDK
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
         with:
-          ndk-version: 26.1.10909125
+          ndk-version: 25.2.9519653   # preinstalled on runner
 
-      # Verify NDK install (debug-safe)
-      - name: Verify NDK
+      # 3️⃣ Verify NDK install (debug)
+      - name: List installed NDKs
         run: |
           echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
           ls $ANDROID_SDK_ROOT/ndk
-          ls $ANDROID_SDK_ROOT/ndk/26.1.10909125/build/cmake
+          ls $ANDROID_SDK_ROOT/ndk/25.2.9519653/build/cmake
 
-      # Install Ninja (required)
+      # 4️⃣ Install Ninja build system
       - name: Install Ninja
         run: sudo apt-get update && sudo apt-get install -y ninja-build
 
-      # Configure & build libtorrent
+      # 5️⃣ Configure & build libtorrent
       - name: Build libtorrent for ${{ matrix.abi }}
         run: |
-          export ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/26.1.10909125
+          export ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/25.2.9519653
 
           mkdir -p build/${{ matrix.abi }}
           cd build/${{ matrix.abi }}
@@ -57,7 +57,7 @@ jobs:
 
           cmake --build . --parallel
 
-      # Upload the resulting .so
+      # 6️⃣ Upload the resulting .so
       - name: Upload libtorrent.so
         uses: actions/upload-artifact@v4
         with:
